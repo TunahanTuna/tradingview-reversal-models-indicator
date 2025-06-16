@@ -1,0 +1,111 @@
+//@version=5
+indicator("Gün Sınırı Göstergesi", overlay=true)
+
+// Renk seçenekleri
+lineColorInput = input.color(color.new(color.blue, 50), "Çizgi Rengi", group="Görünüm Ayarları")
+lineWidthInput = input.int(1, "Çizgi Kalınlığı", minval=1, maxval=4, group="Görünüm Ayarları")
+highLevelColor = input.color(color.new(color.green, 50), "Yüksek Seviye Çizgi Rengi", group="Görünüm Ayarları")
+lowLevelColor = input.color(color.new(color.red, 50), "Düşük Seviye Çizgi Rengi", group="Görünüm Ayarları")
+levelLineWidth = input.int(1, "Seviye Çizgileri Kalınlığı", minval=1, maxval=4, group="Görünüm Ayarları")
+showLevels = input.bool(true, "Önceki Gün Yüksek/Düşük Seviyelerini Göster", group="Görünüm Ayarları")
+
+// Zaman dilimi seçeneği
+selectedTimeZone = input.string("GMT+3", "Zaman Dilimi", options=["UTC", "GMT+3", "GMT-4", "GMT-5"], group="Zaman Ayarları")
+
+// Seçilen zaman dilimine göre saat farkını hesaplama
+tzOffset = selectedTimeZone == "GMT+3" ? 3 :
+           selectedTimeZone == "GMT-4" ? -4 :
+           selectedTimeZone == "GMT-5" ? -5 : 0  // UTC için saat farkı 0
+
+// Son oluşan gün sınırını ve bir önceki günü bulma (00:00)
+var int currentDayTime = na   // Şu anki günün 00:00
+var int prevDayTime = na      // Bir önceki günün 00:00
+var int nextDayTime = na      // Bir sonraki günün 00:00
+
+// Çizgiler için değişkenler
+var line currentDayLine = na
+var line prevDayLine = na
+var line nextDayLine = na
+
+// Seviye çizgileri için değişkenler
+var line prevHighLine = na     // Önceki aralıktaki en yüksek seviye
+var line prevLowLine = na      // Önceki aralıktaki en düşük seviye
+
+// En yüksek ve en düşük değer değişkenleri
+var float currentDayHigh = na
+var float currentDayLow = na
+var float prevDayHigh = na
+var float prevDayLow = na
+var bool firstDayCompleted = false
+
+// Saat ve dakikayı al
+// Zaman dilimi adını 'hour' fonksiyonuna uygun şekilde ayarla
+tzString = selectedTimeZone == "GMT+3" ? "GMT+3" :
+           selectedTimeZone == "GMT-4" ? "GMT-4" :
+           selectedTimeZone == "GMT-5" ? "GMT-5" : "UTC"
+
+h = hour(time, tzString)
+m = minute(time)
+
+// Her barda kontrol et - eğer saat tam 00:00 ise
+newDay = h == 0 and m == 0
+
+// Günün ilk mumunda (00:00'da)
+if newDay
+    // Önceki zamanı kaydır
+    prevDayTime := currentDayTime
+    
+    // Şimdiki ve bir sonraki günü ayarla
+    currentDayTime := time
+    nextDayTime := time + 86400000  // 24 saat = 86400000 milisaniye
+    
+    // Eski çizgileri temizle
+    line.delete(currentDayLine)
+    line.delete(nextDayLine)
+    line.delete(prevDayLine)
+    
+    // Bugünün çizgisi (şu anki 00:00)
+    currentDayLine := line.new(time, low - (high - low) * 0.5, time, high + (high - low) * 0.5, 
+                          color=lineColorInput, style=line.style_dashed, width=lineWidthInput, 
+                          extend=extend.both, xloc=xloc.bar_time)
+    
+    // Yarının çizgisi (bir sonraki 00:00)
+    nextDayLine := line.new(nextDayTime, low - (high - low) * 0.5, nextDayTime, high + (high - low) * 0.5, 
+                          color=lineColorInput, style=line.style_dashed, width=lineWidthInput, 
+                          extend=extend.both, xloc=xloc.bar_time)
+      // Dünün çizgisi (bir önceki 00:00) - eğer varsa
+    if not na(prevDayTime)
+        prevDayLine := line.new(prevDayTime, low - (high - low) * 0.5, prevDayTime, high + (high - low) * 0.5, 
+                          color=lineColorInput, style=line.style_dashed, width=lineWidthInput, 
+                          extend=extend.both, xloc=xloc.bar_time)
+      // En yüksek ve en düşük değerleri güncelle
+    if firstDayCompleted
+        // Önceki aralık tamamlanınca, son değerleri kaydet
+        prevDayHigh := currentDayHigh
+        prevDayLow := currentDayLow
+        
+        // Önceki aralık için yüksek/düşük çizgileri
+        if showLevels and not na(prevDayHigh) and not na(prevDayLow)
+            // Eski çizgileri temizle
+            line.delete(prevHighLine)
+            line.delete(prevLowLine)
+            
+            // Yeni çizgileri oluştur - önceki gün için
+            if not na(prevDayTime)
+                prevHighLine := line.new(prevDayTime, prevDayHigh, currentDayTime, prevDayHigh, 
+                                      color=highLevelColor, style=line.style_solid, width=levelLineWidth,
+                                      extend=extend.none, xloc=xloc.bar_time)
+                                      
+                prevLowLine := line.new(prevDayTime, prevDayLow, currentDayTime, prevDayLow, 
+                                     color=lowLevelColor, style=line.style_solid, width=levelLineWidth,
+                                     extend=extend.none, xloc=xloc.bar_time)
+    
+    // Yeni günün değerlerini sıfırla
+    currentDayHigh := high
+    currentDayLow := low
+    firstDayCompleted := true
+else
+    // Gün içinde en yüksek ve en düşük değerleri güncelle
+    if not na(currentDayTime) and time > currentDayTime and time < nextDayTime
+        currentDayHigh := math.max(currentDayHigh, high)
+        currentDayLow := math.min(currentDayLow, low)

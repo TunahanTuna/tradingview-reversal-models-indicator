@@ -89,14 +89,16 @@ if newDay
             // Eski çizgileri temizle
             line.delete(prevHighLine)
             line.delete(prevLowLine)
-            
-            // Yeni çizgileri oluştur - önceki gün için
+              // Yeni çizgileri oluştur - önceki gün için
             if not na(prevDayTime)
-                prevHighLine := line.new(prevDayTime, prevDayHigh, currentDayTime, prevDayHigh, 
+                // 05:00 saatine kadar olan zaman hesapla (saat başına 3600000 milisaniye)
+                int extendedTime = currentDayTime + 5 * 3600000
+                
+                prevHighLine := line.new(prevDayTime, prevDayHigh, extendedTime, prevDayHigh, 
                                       color=highLevelColor, style=line.style_solid, width=levelLineWidth,
                                       extend=extend.none, xloc=xloc.bar_time)
                                       
-                prevLowLine := line.new(prevDayTime, prevDayLow, currentDayTime, prevDayLow, 
+                prevLowLine := line.new(prevDayTime, prevDayLow, extendedTime, prevDayLow, 
                                      color=lowLevelColor, style=line.style_solid, width=levelLineWidth,
                                      extend=extend.none, xloc=xloc.bar_time)
     

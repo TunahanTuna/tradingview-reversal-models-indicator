@@ -1,13 +1,16 @@
 //@version=5
 indicator("Gün Sınırı Göstergesi", overlay=true)
 
-// Renk seçenekleri
+// Renk ve görünüm seçenekleri
 lineColorInput = input.color(color.new(color.blue, 50), "Çizgi Rengi", group="Görünüm Ayarları")
 lineWidthInput = input.int(1, "Çizgi Kalınlığı", minval=1, maxval=4, group="Görünüm Ayarları")
 highLevelColor = input.color(color.new(color.green, 50), "Yüksek Seviye Çizgi Rengi", group="Görünüm Ayarları")
 lowLevelColor = input.color(color.new(color.red, 50), "Düşük Seviye Çizgi Rengi", group="Görünüm Ayarları")
 levelLineWidth = input.int(1, "Seviye Çizgileri Kalınlığı", minval=1, maxval=4, group="Görünüm Ayarları")
 showLevels = input.bool(true, "Önceki Gün Yüksek/Düşük Seviyelerini Göster", group="Görünüm Ayarları")
+
+// Seviye çizgileri için saat ayarı
+levelExtendHour = input.int(5, "Seviye Çizgilerinin Uzayacağı Saat (0-23)", minval=0, maxval=24, group="Seviye Ayarları")
 
 // Zaman dilimi seçeneği
 selectedTimeZone = input.string("GMT+3", "Zaman Dilimi", options=["UTC", "GMT+3", "GMT-4", "GMT-5"], group="Zaman Ayarları")
@@ -88,11 +91,10 @@ if newDay
         if showLevels and not na(prevDayHigh) and not na(prevDayLow)
             // Eski çizgileri temizle
             line.delete(prevHighLine)
-            line.delete(prevLowLine)
-              // Yeni çizgileri oluştur - önceki gün için
+            line.delete(prevLowLine)            // Yeni çizgileri oluştur - önceki gün için
             if not na(prevDayTime)
-                // 05:00 saatine kadar olan zaman hesapla (saat başına 3600000 milisaniye)
-                int extendedTime = currentDayTime + 5 * 3600000
+                // Kullanıcı tarafından seçilen saate kadar uzat
+                int extendedTime = currentDayTime + levelExtendHour * 3600000
                 
                 prevHighLine := line.new(prevDayTime, prevDayHigh, extendedTime, prevDayHigh, 
                                       color=highLevelColor, style=line.style_solid, width=levelLineWidth,

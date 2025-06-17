@@ -1,6 +1,9 @@
 //@version=5
 indicator("Gün Sınırı Göstergesi", overlay=true)
 
+// Reversal tipi seçeneği
+reversalType = input.string("London Reversal", "Reversal Tipi", options=["London Reversal", "Asia Reversal"], group="Ana Ayarlar")
+
 // Renk ve görünüm seçenekleri
 lineColorInput = input.color(color.new(color.blue, 50), "Çizgi Rengi", group="Görünüm Ayarları")
 lineWidthInput = input.int(1, "Çizgi Kalınlığı", minval=1, maxval=4, group="Görünüm Ayarları")
@@ -20,10 +23,10 @@ tzOffset = selectedTimeZone == "GMT+3" ? 3 :
            selectedTimeZone == "GMT-4" ? -4 :
            selectedTimeZone == "GMT-5" ? -5 : 0  // UTC için saat farkı 0
 
-// Son oluşan gün sınırını ve bir önceki günü bulma (00:00)
-var int currentDayTime = na   // Şu anki günün 00:00
-var int prevDayTime = na      // Bir önceki günün 00:00
-var int nextDayTime = na      // Bir sonraki günün 00:00
+// Son oluşan gün sınırını ve bir önceki günü bulma (London: 00:00 veya Asia: 17:00)
+var int currentDayTime = na   // Şu anki reversal zamanı
+var int prevDayTime = na      // Bir önceki reversal zamanı
+var int nextDayTime = na      // Bir sonraki reversal zamanı
 
 // Çizgiler için değişkenler
 var line currentDayLine = na
@@ -50,10 +53,12 @@ tzString = selectedTimeZone == "GMT+3" ? "GMT+3" :
 h = hour(time, tzString)
 m = minute(time)
 
-// Her barda kontrol et - eğer saat tam 00:00 ise
-newDay = h == 0 and m == 0
+// Her barda kontrol et - seçilen reversal tipine göre zamanı kontrol et
+// London Reversal için 00:00, Asia Reversal için 17:00
+newDay = (reversalType == "London Reversal" and h == 0 and m == 0) or 
+         (reversalType == "Asia Reversal" and h == 17 and m == 0)
 
-// Günün ilk mumunda (00:00'da)
+// Seçilen reversal tipine göre belirtilen zamanda (London: 00:00 veya Asia: 17:00)
 if newDay
     // Önceki zamanı kaydır
     prevDayTime := currentDayTime

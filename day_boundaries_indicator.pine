@@ -1,8 +1,17 @@
 //@version=5
 indicator("Gün Sınırı Göstergesi", overlay=true)
+// Bu gösterge belirli zaman aralıklarındaki yüksek/düşük seviyeleri gösterir
+// Forex ve Endeks piyasaları için özelleştirilmiştir
+// London Reversal: 00:00 - 00:00, Asia Reversal: 17:00 - 17:00
 
 // Reversal tipi seçeneği
+// London Reversal: 00:00 - 00:00 arası periyotlar
+// Asia Reversal: 17:00 - 17:00 arası periyotlar
 reversalType = input.string("London Reversal", "Reversal Tipi", options=["London Reversal", "Asia Reversal"], group="Ana Ayarlar")
+
+// Piyasa tipi seçeneği
+marketType = input.string("Forex", "Piyasa Tipi", options=["Forex", "Indices"], group="Ana Ayarlar")
+showNonTradingHours = input.bool(false, "Ticaret Saatleri Dışındaki Verileri Göster", group="Ana Ayarlar")
 
 // Renk ve görünüm seçenekleri
 lineColorInput = input.color(color.new(color.blue, 50), "Çizgi Rengi", group="Görünüm Ayarları")
@@ -53,35 +62,85 @@ tzString = selectedTimeZone == "GMT+3" ? "GMT+3" :
 h = hour(time, tzString)
 m = minute(time)
 
+// Piyasa tipine göre ticaret saatlerini belirle
+bool isInTradingHours = true
+
+// Indices için (US100, SP500, vb.) ticaret saatlerini tanımla
+if marketType == "Indices"
+    // US pazarı için standart saat aralıkları (GMT-4 baz alınmıştır, diğer zaman dilimleri için ayarla)
+    int localHour = h - tzOffset
+    if selectedTimeZone == "GMT-4"
+        // US piyasası için normal ticaret saatleri 9:30-16:00 EDT
+        isInTradingHours := (localHour > 9 or (localHour == 9 and m >= 30)) and (localHour < 16)
+    else if selectedTimeZone == "GMT-5"
+        // US piyasası için normal ticaret saatleri 9:30-16:00 EST
+        isInTradingHours := (localHour > 9 or (localHour == 9 and m >= 30)) and (localHour < 16)
+    else if selectedTimeZone == "GMT+3"
+        // GMT+3 için US piyasası saatleri 16:30-23:00 arası
+        isInTradingHours := (localHour > 16 or (localHour == 16 and m >= 30)) and (localHour < 23)
+    else  // UTC
+        // UTC için US piyasası saatleri 13:30-20:00 arası
+        isInTradingHours := (localHour > 13 or (localHour == 13 and m >= 30)) and (localHour < 20)
+
 // Her barda kontrol et - seçilen reversal tipine göre zamanı kontrol et
 // London Reversal için 00:00, Asia Reversal için 17:00
-newDay = (reversalType == "London Reversal" and h == 0 and m == 0) or 
+// Hafta sonu gaplerini atla (cumartesi ve pazar günleri yoksa)
+int dow = dayofweek(time, tzString)
+bool isWeekday = dow != dayofweek.saturday and dow != dayofweek.sunday
+bool isValidTradingPeriod = isWeekday and (showNonTradingHours or isInTradingHours)
+
+// Ticaret saatleri dışındaki veriler için kontrol
+bool isValidReversal = false
+
+if marketType == "Forex" 
+    // Forex için her zaman geçerli
+    isValidReversal := isWeekday
+else if marketType == "Indices"
+    // Indices için sadece ticaret saatleri içinde veya kullanıcı ayarına göre
+    isValidReversal := isWeekday and (showNonTradingHours or h >= 9 and h < 17)  // Genel bir yaklaşım
+
+newDay = isValidReversal and (
+         (reversalType == "London Reversal" and h == 0 and m == 0) or 
          (reversalType == "Asia Reversal" and h == 17 and m == 0)
+         )
 
 // Seçilen reversal tipine göre belirtilen zamanda (London: 00:00 veya Asia: 17:00)
 if newDay
     // Önceki zamanı kaydır
     prevDayTime := currentDayTime
     
-    // Şimdiki ve bir sonraki günü ayarla
+    // Şimdiki zamanı ayarla
     currentDayTime := time
-    nextDayTime := time + 86400000  // 24 saat = 86400000 milisaniye
+    
+    // Bir sonraki reversal zamanını ayarla
+    int d = dayofweek(time, tzString)
+    
+    // Eğer Asia Reversal ise ve bugün Cuma günü ise (hafta sonu gap'ini hesaba kat)
+    if reversalType == "Asia Reversal" and d == dayofweek.friday
+        // Pazartesi 17:00'a atla (3 gün sonra)
+        nextDayTime := time + (3 * 86400000)
+    // Eğer Asia Reversal ise ve bugün Pazartesi ise (geçen Cuma'dan sonraki ilk reversal)
+    else if reversalType == "Asia Reversal" and d == dayofweek.monday
+        // Bugün Pazartesi ise normal şekilde 24 saat sonrasına ayarla, ama geçen Cuma'nın değerlerini kullan
+        nextDayTime := time + 86400000
+    else
+        // Normal durumda, bir sonraki 24 saate atla
+        nextDayTime := time + 86400000  // 24 saat = 86400000 milisaniye
     
     // Eski çizgileri temizle
     line.delete(currentDayLine)
     line.delete(nextDayLine)
     line.delete(prevDayLine)
-    
-    // Bugünün çizgisi (şu anki 00:00)
+      // Mevcut reversal çizgisi (şu anki reversal noktası)
     currentDayLine := line.new(time, low - (high - low) * 0.5, time, high + (high - low) * 0.5, 
                           color=lineColorInput, style=line.style_dashed, width=lineWidthInput, 
                           extend=extend.both, xloc=xloc.bar_time)
     
-    // Yarının çizgisi (bir sonraki 00:00)
+    // Bir sonraki reversal çizgisi (24 saat sonrası)
     nextDayLine := line.new(nextDayTime, low - (high - low) * 0.5, nextDayTime, high + (high - low) * 0.5, 
                           color=lineColorInput, style=line.style_dashed, width=lineWidthInput, 
                           extend=extend.both, xloc=xloc.bar_time)
-      // Dünün çizgisi (bir önceki 00:00) - eğer varsa
+    // Bir önceki reversal çizgisi - eğer varsa
     if not na(prevDayTime)
         prevDayLine := line.new(prevDayTime, low - (high - low) * 0.5, prevDayTime, high + (high - low) * 0.5, 
                           color=lineColorInput, style=line.style_dashed, width=lineWidthInput, 
@@ -114,7 +173,15 @@ if newDay
     currentDayLow := low
     firstDayCompleted := true
 else
-    // Gün içinde en yüksek ve en düşük değerleri güncelle
-    if not na(currentDayTime) and time > currentDayTime and time < nextDayTime
+    // Reversal periyodu içinde en yüksek ve en düşük değerleri güncelle
+    // Hafta içi günleri veya geçerli bir piyasa seansında olduğumuzu kontrol et
+    int current_dow = dayofweek(time, tzString)
+    bool isValidTrading = current_dow != dayofweek.saturday and current_dow != dayofweek.sunday
+    
+    // Piyasa tipine göre ek kontroller
+    if marketType == "Indices" and not showNonTradingHours
+        isValidTrading := isValidTrading and isInTradingHours
+    
+    if not na(currentDayTime) and time > currentDayTime and time < nextDayTime and isValidTrading
         currentDayHigh := math.max(currentDayHigh, high)
         currentDayLow := math.min(currentDayLow, low)
